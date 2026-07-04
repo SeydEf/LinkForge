@@ -110,7 +110,7 @@ The bot stores runtime data in:
 
 These are created automatically on startup.
 
-### Web Server Configs
+## Web Server Configs
 
 **Nginx**
 
