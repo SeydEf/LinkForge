@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: file_to_link_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:20124:5000"
+    volumes:
+      - ./data:/app/data
