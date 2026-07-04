@@ -1,7 +1,7 @@
-pyrogram==2.0.106
-tgcrypto==1.2.5
-flask==3.0.3
-aiohttp==3.9.5
-qrcode[pil]==7.4.2
-werkzeug==3.0.3
+pyrogram
+tgcrypto
+flask
+aiohttp
+qrcode[pil]
+werkzeug
 Pillow
