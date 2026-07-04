@@ -110,6 +110,52 @@ The bot stores runtime data in:
 
 These are created automatically on startup.
 
+### Web Server Configs
+
+**Nginx**
+
+```nginx
+server {
+    listen 80;
+    server_name files.example.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name files.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/files.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/files.example.com/privkey.pem;
+
+    client_max_body_size 100m;
+
+    location / {
+        proxy_pass http://127.0.0.1:20124;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+    }
+}
+```
+
+**Caddy**
+
+```caddy
+your-public-domain.com {
+    encode gzip
+    reverse_proxy 127.0.0.1:20124
+}
+```
+
 ## How It Works
 
 1. Users send media or a direct URL.
