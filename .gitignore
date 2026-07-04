@@ -13,7 +13,6 @@ env/
 ENV/
 
 .env
-.env.*
 *.local
 
 data/
