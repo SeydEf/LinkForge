@@ -193,7 +193,7 @@ async def general_summary(client, message: Message):
             total_bytes += os.path.getsize(path)
 
     await message.reply_text(
-        f"📊 **My Personal Metrics Summary**\n\n"
+        f"📊 **Metrics Summary**\n\n"
         f"🔗 **Active Links:** `{stats['active_links']}`\n"
         f"📁 **Total Uploaded Links:** `{stats['total_links']}`\n"
         f"💾 **Active Storage Used:** `{human_size(total_bytes)}`\n"
