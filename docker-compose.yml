@@ -3,7 +3,7 @@ version: '3.8'
 services:
   telegram-bot:
     build: .
-    container_name: file_to_link_bot
+    container_name: link-forge-telegram-bot
     restart: unless-stopped
     env_file:
       - .env
