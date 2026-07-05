@@ -9,7 +9,7 @@ from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from ..config import BASE_URL, DOWNLOAD_DIR, PROCESS_MEDIA_TIME, RETENTION_HOURS
-from ..database import db_add_file
+from ..database import db_add_file, generate_short_code
 from ..state import ACTIVE_DOWNLOADS, USER_BATCHES
 from ..utils import cleanup_file, extract_file_metadata, get_media, human_size, make_progress_bar, make_qr_bytes
 from .client import bot
@@ -34,7 +34,7 @@ def build_result_keyboard(file_uuid: str, is_protected: bool) -> InlineKeyboardM
 
 
 async def finalize_upload(status_msg: Message, original_name: str, local_path: str, owner_id: int, incoming_duration=None):
-    file_uuid = str(uuid.uuid4())
+    file_uuid = generate_short_code()
     metadata = extract_file_metadata(local_path, incoming_duration)
     db_add_file(file_uuid, original_name, local_path, owner_id, metadata)
 

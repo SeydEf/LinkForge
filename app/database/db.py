@@ -176,3 +176,49 @@ def db_get_analytics(file_uuid: str, limit: int = 50):
             (file_uuid, limit)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def generate_short_code() -> str:
+    import random
+    import string
+    while True:
+        code = "".join(random.choices(string.ascii_letters, k=3))
+        if not db_get_file(code):
+            return code
+
+
+def db_get_user_stats(owner_id: int, retention_sec: float) -> dict:
+    with db_lock:
+        conn = get_conn()
+        now = time.time()
+        cutoff = now - retention_sec
+
+        row_total = conn.execute(
+            "SELECT COUNT(*) as cnt FROM files WHERE owner_id = ?", (owner_id,)).fetchone()
+        total_links = row_total["cnt"] if row_total else 0
+
+        row_active = conn.execute(
+            "SELECT COUNT(*) as cnt FROM files WHERE owner_id = ? AND upload_time >= ?", (owner_id, cutoff)).fetchone()
+        active_links = row_active["cnt"] if row_active else 0
+
+        row_downloads = conn.execute(
+            "SELECT SUM(downloads) as dl FROM files WHERE owner_id = ?", (owner_id,)).fetchone()
+        total_downloads = row_downloads["dl"] if row_downloads["dl"] is not None else 0
+
+        row_ips = conn.execute(
+            "SELECT COUNT(DISTINCT ip) as unique_ips FROM analytics "
+            "WHERE file_uuid IN (SELECT uuid FROM files WHERE owner_id = ?)", (owner_id,)
+        ).fetchone()
+        unique_users = row_ips["unique_ips"] if row_ips else 0
+
+        rows_paths = conn.execute(
+            "SELECT local_path FROM files WHERE owner_id = ? AND upload_time >= ?", (owner_id, cutoff)).fetchall()
+        active_paths = [r["local_path"] for r in rows_paths]
+
+        return {
+            "total_links": total_links,
+            "active_links": active_links,
+            "total_downloads": total_downloads,
+            "unique_users": unique_users,
+            "active_paths": active_paths
+        }

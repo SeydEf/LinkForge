@@ -25,6 +25,8 @@ from ..database import (
     db_get_path_reference_count,
     db_set_ban_status,
     db_set_password,
+    generate_short_code,
+    db_get_user_stats,
 )
 from ..state import ACTIVE_DOWNLOADS, PENDING_PASSWORD, PENDING_URL_CHOICE, USER_BATCHES
 from ..utils import cleanup_file, human_size
@@ -83,7 +85,7 @@ async def admin_ban_cmd(client, message: Message):
 async def admin_delete_cmd(client, message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        return await message.reply_text("❗ Use format: `/admin_delete <uuid>`")
+        return await message.reply_text("❗ Use format: `/admin_delete <code>`")
 
     target_uuid = parts[1].strip()
     file_info = db_get_file(target_uuid)
@@ -125,14 +127,14 @@ async def admin_broadcast_cmd(client, message: Message):
 async def clone_link_cmd(client, message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        return await message.reply_text("❗ Use format: `/clone <uuid>`")
+        return await message.reply_text("❗ Use format: `/clone <code>`")
 
     old_uuid = parts[1].strip()
     file_info = db_get_file(old_uuid)
     if not file_info:
         return await message.reply_text("❌ Linked reference missing or expired.")
 
-    new_uuid = str(uuid.uuid4())
+    new_uuid = generate_short_code()
     meta_dict = json.loads(
         file_info["metadata"]) if file_info["metadata"] else None
 
@@ -178,10 +180,32 @@ async def my_links(client, message: Message):
         await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
 
 
+@bot.on_message((filters.command("summary") | filters.regex(r"^📊 Summary$")) & filters.private)
+async def general_summary(client, message: Message):
+    user_id = message.from_user.id
+    stats = db_get_user_stats(user_id, RETENTION_SEC)
+
+    # Calculate active storage used
+    unique_paths = set(stats["active_paths"])
+    total_bytes = 0
+    for path in unique_paths:
+        if os.path.exists(path):
+            total_bytes += os.path.getsize(path)
+
+    await message.reply_text(
+        f"📊 **My Personal Metrics Summary**\n\n"
+        f"🔗 **Active Links:** `{stats['active_links']}`\n"
+        f"📁 **Total Uploaded Links:** `{stats['total_links']}`\n"
+        f"💾 **Active Storage Used:** `{human_size(total_bytes)}`\n"
+        f"📥 **Total Downloads Served:** `{stats['total_downloads']}`\n"
+        f"👥 **Unique Downloaders:** `{stats['unique_users']}`"
+    )
+
+
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
     menu_keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton("📂 My Links")]],
+        [[KeyboardButton("📂 My Links"), KeyboardButton("📊 Summary")]],
         resize_keyboard=True
     )
 
@@ -192,7 +216,7 @@ async def start_command(client, message: Message):
         "Send me any file, photo, video, audio, or a **direct URL**.\n\n"
         "📁 Files you send are re-hosted with a link (QR code, download counter, optional password).\n"
         "📦 Multi-file forwards automatically bundle together inside a clean structured Zip package!\n\n"
-        "📂 Tap the **My Links** button below to view, track, or delete your active server links.\n"
+        "📂 Tap the **My Links** button below to view/delete your active server links, or click **Summary** to check global stats.\n"
         f"🔐 Server-hosted files are kept securely and deleted after {RETENTION_HOURS} hours.",
         reply_markup=menu_keyboard
     )

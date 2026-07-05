@@ -13,6 +13,8 @@ from .db import (
     db_log_download,
     db_set_ban_status,
     db_set_password,
+    generate_short_code,
+    db_get_user_stats,
     get_conn,
     init_db,
 )
@@ -32,6 +34,8 @@ __all__ = [
     "db_log_download",
     "db_set_ban_status",
     "db_set_password",
+    "generate_short_code",
+    "db_get_user_stats",
     "get_conn",
     "init_db",
 ]
