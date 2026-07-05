@@ -185,7 +185,6 @@ async def general_summary(client, message: Message):
     user_id = message.from_user.id
     stats = db_get_user_stats(user_id, RETENTION_SEC)
 
-    # Calculate active storage used
     unique_paths = set(stats["active_paths"])
     total_bytes = 0
     for path in unique_paths:
