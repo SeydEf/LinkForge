@@ -118,6 +118,7 @@ async def admin_broadcast_cmd(client, message: Message):
             success_count += 1
             await asyncio.sleep(0.05)
         except Exception:
+            print(f"[!] error accured while sending broadcast to user `{uid}`.")
             pass
 
     await status.edit_text(f"✅ Dispatch complete. Reached `{success_count}/{len(users)}` destinations successfully.")
