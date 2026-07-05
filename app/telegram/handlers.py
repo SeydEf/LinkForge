@@ -57,7 +57,7 @@ async def admin_stats_cmd(client, message: Message):
             total_bytes += os.path.getsize(path)
 
     await message.reply_text(
-        f"📊 **Global Instance Metrics Overview**\n\n"
+        f"📊 **Global Metrics Overview**\n\n"
         f"👥 **Total Tracked Users:** `{total_users}`\n"
         f"📂 **Active Database Link Rows:** `{total_files}`\n"
         f"💾 **Disk Space Consumed:** `{human_size(total_bytes)}`\n"
