@@ -69,14 +69,14 @@ pip install -r requirements.txt
 4. Run the bot:
 
 ```bash
-python bot.py
+python run.py
 ```
 
 The Flask download server listens on port `5000` inside the app.
 
 ## Docker Deployment
 
-This project includes a [Dockerfile](/home/seydef/Project/Python/uploader_bot_v2/Dockerfile) and [docker-compose.yml](/home/seydef/Project/Python/uploader_bot_v2/docker-compose.yml) for containerized deployment.
+This project includes a Dockerfile and docker-compose.yml for containerized deployment.
 
 ### Build and run
 
