@@ -19,6 +19,7 @@ A Telegram file uploader bot that:
 - Local Flask download server
 - SQLite persistence
 - Automatic cleanup of expired files
+- Per-user storage quota enforcement (with admin overrides)
 
 ## Requirements
 
@@ -39,6 +40,7 @@ BASE_URL=https://your-public-domain-or-ip
 ADMIN_IDS=123456789,987654321
 PROCESS_MEDIA_TIME=3.0
 RETENTION_HOURS=24
+USER_STORAGE_LIMIT_MB=2048
 ```
 
 ### Variable Notes
@@ -48,6 +50,7 @@ RETENTION_HOURS=24
 - `ADMIN_IDS`: comma-separated Telegram user IDs allowed to use admin commands
 - `PROCESS_MEDIA_TIME`: delay before batching media into one upload
 - `RETENTION_HOURS`: how long hosted files remain available
+- `USER_STORAGE_LIMIT_MB`: per-user storage limit in MB (defaults to 2048, set to 0 for unlimited)
 
 ## Local Deployment
 
@@ -174,6 +177,7 @@ Available to user IDs listed in `ADMIN_IDS`:
 - `/admin_ban <user_id>` - ban a user
 - `/admin_delete <uuid>` - delete a hosted file record
 - `/admin_broadcast <text>` - send a message to all tracked users
+- `/admin_setquota <user_id> <limit_in_MB>` - set custom storage limit for a user (0 for unlimited)
 
 ## User Commands
 
