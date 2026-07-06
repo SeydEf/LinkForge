@@ -8,8 +8,14 @@ import aiohttp
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from ..config import BASE_URL, DOWNLOAD_DIR, PROCESS_MEDIA_TIME, RETENTION_HOURS
-from ..database import db_add_file, generate_short_code
+from ..config import BASE_URL, DOWNLOAD_DIR, PROCESS_MEDIA_TIME, RETENTION_HOURS, RETENTION_SEC
+from ..database import (
+    db_add_file,
+    generate_short_code,
+    db_get_user_quota,
+    db_get_user_active_storage,
+)
+
 from ..state import ACTIVE_DOWNLOADS, USER_BATCHES
 from ..utils import cleanup_file, extract_file_metadata, get_media, human_size, make_progress_bar, make_qr_bytes
 from .client import bot
@@ -60,6 +66,17 @@ async def finalize_upload(status_msg: Message, original_name: str, local_path: s
     return file_uuid
 
 
+def check_quota(user_id: int, incoming_bytes: int) -> tuple[bool, int, int]:
+    quota = db_get_user_quota(user_id)
+    if quota == 0:
+        return True, 0, 0
+
+    used = db_get_user_active_storage(user_id, RETENTION_SEC)
+    if used + incoming_bytes > quota:
+        return False, quota, used
+    return True, quota, used
+
+
 async def process_media_batch(user_id: int, chat_id: int):
     await asyncio.sleep(PROCESS_MEDIA_TIME)
     batch = USER_BATCHES.pop(user_id, None)
@@ -69,6 +86,23 @@ async def process_media_batch(user_id: int, chat_id: int):
     messages = batch["messages"]
     if len(messages) == 1:
         await handle_single_media_processing(messages[0])
+        return
+
+    incoming_bytes = 0
+    for msg in messages:
+        _, media = get_media(msg)
+        if media:
+            incoming_bytes += getattr(media, "file_size", 0) or 0
+
+    allowed, quota, used = check_quota(user_id, incoming_bytes)
+    if not allowed:
+        await bot.send_message(
+            chat_id,
+            f"❌ **Storage Quota Exceeded for Batch!**\n\n"
+            f"📁 Batch size: `{human_size(incoming_bytes)}`\n"
+            f"💾 Current storage used: `{human_size(used)}` / `{human_size(quota)}`\n\n"
+            f"Please wait for your active links to expire or delete some files."
+        )
         return
 
     status_msg = await bot.send_message(chat_id, f"📦 **Processing batch package of {len(messages)} items into zip...**")
@@ -95,7 +129,7 @@ async def process_media_batch(user_id: int, chat_id: int):
             actual_path = await bot.download_media(
                 msg, file_name=d_path, progress=batch_download_progress,
                 progress_args=(task_id, status_msg, f_name,
-                               item_start_time, idx, len(messages))
+                                item_start_time, idx, len(messages))
             )
 
             if actual_path and os.path.exists(actual_path):
@@ -126,6 +160,17 @@ async def process_media_batch(user_id: int, chat_id: int):
 async def handle_single_media_processing(message: Message):
     media_type, media = get_media(message)
     if not media:
+        return
+
+    incoming_bytes = getattr(media, "file_size", 0) or 0
+    allowed, quota, used = check_quota(message.from_user.id, incoming_bytes)
+    if not allowed:
+        await message.reply_text(
+            f"❌ **Storage Quota Exceeded!**\n\n"
+            f"📁 File size: `{human_size(incoming_bytes)}`\n"
+            f"💾 Current storage used: `{human_size(used)}` / `{human_size(quota)}`\n\n"
+            f"Please wait for your active links to expire or delete some files."
+        )
         return
 
     task_id = uuid.uuid4().hex[:10]

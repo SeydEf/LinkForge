@@ -1,11 +1,12 @@
 import json
+import os
 import sqlite3
 import threading
 import time
 
 from werkzeug.security import generate_password_hash
 
-from ..config import DB_PATH
+from ..config import DB_PATH, DEFAULT_USER_STORAGE_LIMIT
 
 db_lock = threading.Lock()
 _conn = None
@@ -51,6 +52,11 @@ def init_db():
                 is_banned INTEGER DEFAULT 0
             )
         """)
+        
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
@@ -74,10 +80,14 @@ def db_set_ban_status(user_id: int, ban: bool):
     with db_lock:
         conn = get_conn()
         conn.execute(
-            "INSERT OR REPLACE INTO users (user_id, is_banned) VALUES (?, ?)",
-            (user_id, 1 if ban else 0)
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+        )
+        conn.execute(
+            "UPDATE users SET is_banned = ? WHERE user_id = ?",
+            (1 if ban else 0, user_id)
         )
         conn.commit()
+
 
 
 def db_get_all_users():
@@ -222,3 +232,45 @@ def db_get_user_stats(owner_id: int, retention_sec: float) -> dict:
             "unique_users": unique_users,
             "active_paths": active_paths
         }
+
+
+def db_set_user_quota(user_id: int, limit_bytes: int):
+    with db_lock:
+        conn = get_conn()
+        conn.execute(
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
+        )
+        conn.execute(
+            "UPDATE users SET storage_limit_bytes = ? WHERE user_id = ?",
+            (limit_bytes, user_id)
+        )
+        conn.commit()
+
+
+def db_get_user_quota(user_id: int) -> int:
+    with db_lock:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT storage_limit_bytes FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row is None or row["storage_limit_bytes"] == 0:
+        return DEFAULT_USER_STORAGE_LIMIT
+    return row["storage_limit_bytes"]
+
+
+def db_get_user_active_storage(user_id: int, retention_sec: float) -> int:
+    cutoff = time.time() - retention_sec
+    with db_lock:
+        conn = get_conn()
+        rows = conn.execute(
+            "SELECT DISTINCT local_path FROM files "
+            "WHERE owner_id = ? AND upload_time >= ?",
+            (user_id, cutoff)
+        ).fetchall()
+    total = 0
+    for r in rows:
+        path = r["local_path"]
+        if os.path.exists(path):
+            total += os.path.getsize(path)
+    return total
+

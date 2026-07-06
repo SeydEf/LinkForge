@@ -27,6 +27,9 @@ from ..database import (
     db_set_password,
     generate_short_code,
     db_get_user_stats,
+    db_set_user_quota,
+    db_get_user_quota,
+    db_get_user_active_storage,
 )
 from ..state import ACTIVE_DOWNLOADS, PENDING_PASSWORD, PENDING_URL_CHOICE, USER_BATCHES
 from ..utils import cleanup_file, human_size
@@ -37,7 +40,9 @@ from .uploads import (
     download_url_to_path,
     finalize_upload,
     process_media_batch,
+    check_quota,
 )
+
 
 
 @bot.on_message(filters.command("admin_stats") & filters.private)
@@ -78,6 +83,29 @@ async def admin_ban_cmd(client, message: Message):
         await message.reply_text(f"🚫 User `{target_id}` has been successfully restricted.")
     except ValueError:
         await message.reply_text("❌ Missing or invalid Target User ID formatting validation.")
+
+
+@bot.on_message(filters.command("admin_setquota") & filters.private)
+@admin_only
+async def admin_setquota_cmd(client, message: Message):
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        return await message.reply_text("❗ Use format: `/admin_setquota <user_id> <limit_in_MB>` (e.g. 2048 for 2GB, 0 for unlimited)")
+
+    try:
+        target_id = int(parts[1].strip())
+        limit_mb = int(parts[2].strip())
+        if limit_mb < 0:
+            return await message.reply_text("❌ Quota limit must be 0 (unlimited) or a positive integer.")
+
+        limit_bytes = limit_mb * 1024 * 1024
+        db_set_user_quota(target_id, limit_bytes)
+
+        limit_str = f"`{limit_mb} MB`" if limit_mb > 0 else "`Unlimited`"
+        await message.reply_text(f"✅ Storage quota for user `{target_id}` updated to {limit_str}.")
+    except ValueError:
+        await message.reply_text("❌ Invalid input parameters. Ensure both User ID and limit are integers.")
+
 
 
 @bot.on_message(filters.command("admin_delete") & filters.private)
@@ -192,11 +220,14 @@ async def general_summary(client, message: Message):
         if os.path.exists(path):
             total_bytes += os.path.getsize(path)
 
+    quota_bytes = db_get_user_quota(user_id)
+    quota_str = human_size(quota_bytes) if quota_bytes > 0 else "Unlimited"
+
     await message.reply_text(
         f"📊 **Metrics Summary**\n\n"
         f"🔗 **Active Links:** `{stats['active_links']}`\n"
         f"📁 **Total Uploaded Links:** `{stats['total_links']}`\n"
-        f"💾 **Active Storage Used:** `{human_size(total_bytes)}`\n"
+        f"💾 **Active Storage Used:** `{human_size(total_bytes)}` / `{quota_str}`\n"
         f"📥 **Total Downloads Served:** `{stats['total_downloads']}`\n"
         f"👥 **Unique Downloaders:** `{stats['unique_users']}`"
     )
@@ -399,6 +430,26 @@ async def handle_url_choice_host(client, callback_query):
 
     await callback_query.answer()
     url, original_name = choice["url"], choice["original_name"]
+
+    import aiohttp
+    content_length = 0
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, allow_redirects=True) as resp:
+                content_length = int(resp.headers.get('content-length', 0))
+    except Exception:
+        pass
+
+    allowed, quota, used = check_quota(callback_query.from_user.id, content_length)
+    if not allowed:
+        return await callback_query.message.edit_text(
+            f"❌ **Storage Quota Exceeded!**\n\n"
+            f"📁 URL File size: `{human_size(content_length)}`\n"
+            f"💾 Current storage used: `{human_size(used)}` / `{human_size(quota)}`\n\n"
+            f"Please wait for your active links to expire or delete some files.",
+            disable_web_page_preview=True
+        )
+
     task_id = uuid.uuid4().hex[:10]
     download_path = os.path.join(DOWNLOAD_DIR, f"{task_id}_{original_name}")
     keyboard = InlineKeyboardMarkup(
@@ -411,11 +462,20 @@ async def handle_url_choice_host(client, callback_query):
         await download_url_to_path(url, download_path, task_id, status_msg, original_name, keyboard, "Downloading for server hosting")
         if ACTIVE_DOWNLOADS.get(task_id, {}).get("cancelled"):
             raise Exception("Cancelled by user")
+
+        if os.path.exists(download_path):
+            actual_size = os.path.getsize(download_path)
+            allowed, quota, used = check_quota(callback_query.from_user.id, max(0, actual_size - content_length))
+            if not allowed:
+                raise Exception(f"Quota exceeded: actual size {human_size(actual_size)} exceeds remaining storage limit")
+
         await finalize_upload(status_msg, original_name, download_path, callback_query.from_user.id)
     except Exception as e:
         cleanup_file(download_path)
         if "cancelled by user" in str(e).lower():
             await status_msg.edit_text(f"🛑 **Download Cancelled**\n📄 `{original_name}`")
+        elif "quota exceeded" in str(e).lower():
+            await status_msg.edit_text(f"❌ **Quota Exceeded**\n\n`{str(e)}`")
         else:
             await status_msg.edit_text(f"❌ **Download Failed**\n📄 `{original_name}`\n\n`{str(e)}`")
     finally:

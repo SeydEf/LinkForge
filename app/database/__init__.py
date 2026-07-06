@@ -17,6 +17,9 @@ from .db import (
     db_get_user_stats,
     get_conn,
     init_db,
+    db_set_user_quota,
+    db_get_user_quota,
+    db_get_user_active_storage,
 )
 
 __all__ = [
@@ -38,4 +41,8 @@ __all__ = [
     "db_get_user_stats",
     "get_conn",
     "init_db",
+    "db_set_user_quota",
+    "db_get_user_quota",
+    "db_get_user_active_storage",
 ]
+
