@@ -68,11 +68,9 @@ async def finalize_upload(status_msg: Message, original_name: str, local_path: s
 
 def check_quota(user_id: int, incoming_bytes: int) -> tuple[bool, int, int]:
     quota = db_get_user_quota(user_id)
-    if quota == 0:
-        return True, 0, 0
-
     used = db_get_user_active_storage(user_id, RETENTION_SEC)
-    if used + incoming_bytes > quota:
+    
+    if quota != -1 and used + incoming_bytes > quota:
         return False, quota, used
     return True, quota, used
 
@@ -95,7 +93,7 @@ async def process_media_batch(user_id: int, chat_id: int):
             incoming_bytes += getattr(media, "file_size", 0) or 0
 
     allowed, quota, used = check_quota(user_id, incoming_bytes)
-    quota_str = "Unlimited" if quota > 0 else human_size(quota)
+    quota_str = human_size(quota) if quota > 0 else "Unlimited"
     if not allowed:
         await bot.send_message(
             chat_id,
