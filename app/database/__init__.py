@@ -20,6 +20,7 @@ from .db import (
     db_set_user_quota,
     db_get_user_quota,
     db_get_user_active_storage,
+    db_user_exists,
 )
 
 __all__ = [
@@ -44,5 +45,7 @@ __all__ = [
     "db_set_user_quota",
     "db_get_user_quota",
     "db_get_user_active_storage",
+    "db_user_exists",
 ]
+
 

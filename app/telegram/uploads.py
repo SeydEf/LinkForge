@@ -95,12 +95,13 @@ async def process_media_batch(user_id: int, chat_id: int):
             incoming_bytes += getattr(media, "file_size", 0) or 0
 
     allowed, quota, used = check_quota(user_id, incoming_bytes)
+    quota_str = "Unlimited" if quota > 0 else human_size(quota)
     if not allowed:
         await bot.send_message(
             chat_id,
             f"❌ **Storage Quota Exceeded for Batch!**\n\n"
             f"📁 Batch size: `{human_size(incoming_bytes)}`\n"
-            f"💾 Current storage used: `{human_size(used)}` / `{human_size(quota)}`\n\n"
+            f"💾 Current storage used: `{human_size(used)}` / `{quota_str}`\n\n"
             f"Please wait for your active links to expire or delete some files."
         )
         return

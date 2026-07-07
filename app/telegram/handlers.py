@@ -30,6 +30,7 @@ from ..database import (
     db_set_user_quota,
     db_get_user_quota,
     db_get_user_active_storage,
+    db_user_exists,
 )
 from ..state import ACTIVE_DOWNLOADS, PENDING_PASSWORD, PENDING_URL_CHOICE, USER_BATCHES
 from ..utils import cleanup_file, human_size
@@ -98,7 +99,10 @@ async def admin_setquota_cmd(client, message: Message):
         if limit_mb < 0:
             return await message.reply_text("❌ Quota limit must be 0 (unlimited) or a positive integer.")
 
-        limit_bytes = limit_mb * 1024 * 1024
+        if not db_user_exists(target_id):
+            return await message.reply_text(f"❌ User `{target_id}` does not exist in the database.")
+
+        limit_bytes = -1 if limit_mb == 0 else limit_mb * 1024 * 1024
         db_set_user_quota(target_id, limit_bytes)
 
         limit_str = f"`{limit_mb} MB`" if limit_mb > 0 else "`Unlimited`"

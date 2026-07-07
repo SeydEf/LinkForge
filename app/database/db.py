@@ -76,6 +76,16 @@ def db_is_banned(user_id: int) -> bool:
         return bool(row["is_banned"]) if row else False
 
 
+def db_user_exists(user_id: int) -> bool:
+    with db_lock:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT 1 FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return row is not None
+
+
+
 def db_set_ban_status(user_id: int, ban: bool):
     with db_lock:
         conn = get_conn()
@@ -253,9 +263,15 @@ def db_get_user_quota(user_id: int) -> int:
         row = conn.execute(
             "SELECT storage_limit_bytes FROM users WHERE user_id = ?", (user_id,)
         ).fetchone()
-    if row is None or row["storage_limit_bytes"] == 0:
+    if row is None:
         return DEFAULT_USER_STORAGE_LIMIT
-    return row["storage_limit_bytes"]
+    val = row["storage_limit_bytes"]
+    if val is None or val == 0:
+        return DEFAULT_USER_STORAGE_LIMIT
+    if val == -1:
+        return -1
+    return val
+
 
 
 def db_get_user_active_storage(user_id: int, retention_sec: float) -> int:
