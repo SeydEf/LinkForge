@@ -42,7 +42,7 @@ def download_file(file_uuid):
     db_increment_downloads(file_uuid)
 
     return send_file(
-        file_info["local_path"],
+        os.path.abspath(file_info["local_path"]),
         as_attachment=True,
         download_name=file_info.get("original_name", "downloaded_file"),
         conditional=True
