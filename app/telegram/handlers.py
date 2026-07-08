@@ -15,7 +15,7 @@ from pyrogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from ..config import ADMIN_IDS, BASE_URL, DOWNLOAD_DIR, RETENTION_HOURS, RETENTION_SEC
+from ..config import ADMIN_IDS, BASE_URL, DOWNLOAD_DIR, RETENTION_HOURS, RETENTION_SEC, DEFAULT_USER_STORAGE_LIMIT
 from ..database import (
     db_add_file,
     db_delete_file,
@@ -125,12 +125,15 @@ async def send_admin_user_panel(client, chat_id: int, user_id: int, edit_message
     ban_btn_text = "✅ Unban User" if is_banned else "🚫 Ban User"
     ban_callback = f"admin_unb_{user_id}" if is_banned else f"admin_ban_{user_id}"
 
+    default_limit_gb = DEFAULT_USER_STORAGE_LIMIT // (1024 * 1024 * 1024)
+    unl_btn_text = f"⚙️ Set Limit ({default_limit_gb} GB)" if quota_bytes == -1 else "♾️ Unlimited"
+
     kbd = InlineKeyboardMarkup([
         [InlineKeyboardButton(ban_btn_text, callback_data=ban_callback)],
         [
             InlineKeyboardButton("➖ 1 GB", callback_data=f"admin_qdec_{user_id}"),
             InlineKeyboardButton("➕ 1 GB", callback_data=f"admin_qinc_{user_id}"),
-            InlineKeyboardButton("♾️ Unlimited", callback_data=f"admin_qunl_{user_id}")
+            InlineKeyboardButton(unl_btn_text, callback_data=f"admin_qunl_{user_id}")
         ],
         [
             InlineKeyboardButton("📂 View Active Links", callback_data=f"admin_vlinks_{user_id}"),
@@ -228,24 +231,70 @@ async def admin_quota_callback(client, callback_query):
     one_gb = 1024 * 1024 * 1024
 
     if action == "unl":
-        db_set_user_quota(target_id, -1)
-        await callback_query.answer("Quota set to Unlimited.", show_alert=True)
+        if current_quota == -1:
+            db_set_user_quota(target_id, DEFAULT_USER_STORAGE_LIMIT)
+            await callback_query.answer("Quota set to default limit.", show_alert=True)
+        else:
+            db_set_user_quota(target_id, -1)
+            await callback_query.answer("Quota set to Unlimited.", show_alert=True)
     elif action == "inc":
         if current_quota == -1:
-            await callback_query.answer("User already has unlimited quota.", show_alert=True)
-            return
-        new_quota = current_quota + one_gb
+            new_quota = DEFAULT_USER_STORAGE_LIMIT + one_gb
+        else:
+            new_quota = current_quota + one_gb
         db_set_user_quota(target_id, new_quota)
         await callback_query.answer("Quota increased by 1 GB.", show_alert=True)
     elif action == "dec":
         if current_quota == -1:
-            await callback_query.answer("Cannot decrease from unlimited. Set a custom quota first.", show_alert=True)
-            return
-        new_quota = max(one_gb, current_quota - one_gb)
+            new_quota = max(one_gb, DEFAULT_USER_STORAGE_LIMIT - one_gb)
+        else:
+            new_quota = max(one_gb, current_quota - one_gb)
         db_set_user_quota(target_id, new_quota)
         await callback_query.answer("Quota decreased by 1 GB.", show_alert=True)
 
     await send_admin_user_panel(client, callback_query.message.chat.id, target_id, edit_message_id=callback_query.message.id)
+
+
+async def refresh_admin_links_view(client, chat_id: int, message_id: int, target_id: int):
+    files = db_get_files_by_owner(target_id)
+    now = time.time()
+    active_files = [f for f in files if now - f["upload_time"] <= RETENTION_SEC]
+
+    if not active_files:
+        await client.edit_message_text(
+            chat_id, message_id,
+            "📂 No active links found for this user.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"admin_view_{target_id}")]
+            ])
+        )
+        return
+
+    response_text = f"📂 **Active Links for User `{target_id}`**:\nSelect a file below to download/view stats, or click 🗑️ to delete it."
+
+    buttons = []
+    for f in active_files:
+        remaining = RETENTION_SEC - (now - f["upload_time"])
+        hrs, mins = int(remaining // 3600), int((remaining % 3600) // 60)
+        lock_icon = "🔒" if f["password_hash"] else "🔓"
+        button_label = f"📄 {f['original_name']} ({hrs}h {mins}m) | {lock_icon} | ⬇️ {f['downloads']}"
+        buttons.append([
+            InlineKeyboardButton(button_label, url=f"{BASE_URL}/download/{f['uuid']}"),
+            InlineKeyboardButton("🗑️", callback_data=f"admin_delfile_{f['uuid']}_{target_id}")
+        ])
+
+    buttons.append([InlineKeyboardButton("🔙 Back to Profile", callback_data=f"admin_view_{target_id}")])
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    try:
+        await client.edit_message_text(chat_id, message_id, response_text, reply_markup=keyboard)
+    except MessageNotModified:
+        pass
+    except Exception:
+        try:
+            await client.send_message(chat_id, response_text, reply_markup=keyboard)
+        except Exception:
+            pass
 
 
 @bot.on_callback_query(filters.regex(r"^admin_vlinks_(.+)$"))
@@ -254,32 +303,28 @@ async def admin_view_links_callback(client, callback_query):
         return await callback_query.answer("⚠️ Access Denied", show_alert=True)
 
     target_id = int(callback_query.matches[0].group(1))
-    files = db_get_files_by_owner(target_id)
-    now = time.time()
-    active_files = [f for f in files if now - f["upload_time"] <= RETENTION_SEC]
-
-    if not active_files:
-        await callback_query.answer("No active links found for this user.", show_alert=True)
-        return
-
     await callback_query.answer()
+    await refresh_admin_links_view(client, callback_query.message.chat.id, callback_query.message.id, target_id)
 
-    response_text = f"📂 **Active Links for User `{target_id}`**:\n\n"
-    for f in active_files:
-        remaining = RETENTION_SEC - (now - f["upload_time"])
-        hrs, mins = int(remaining // 3600), int((remaining % 3600) // 60)
-        lock_icon = "🔒" if f["password_hash"] else "🔓"
-        response_text += (
-            f"📄 `{f['original_name']}`\n"
-            f"   Code: `/admin_delete {f['uuid']}`\n"
-            f"   Downloads: {f['downloads']} | {lock_icon} | Expires in {hrs}h {mins}m\n"
-            f"   🔗 {BASE_URL}/download/{f['uuid']}\n\n"
-        )
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"admin_view_{target_id}")]
-    ])
-    await client.send_message(chat_id=callback_query.message.chat.id, text=response_text[:4096], reply_markup=keyboard, disable_web_page_preview=True)
+@bot.on_callback_query(filters.regex(r"^admin_delfile_(.+)_(.+)$"))
+async def admin_delete_file_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    target_uuid = callback_query.matches[0].group(1)
+    target_user_id = int(callback_query.matches[0].group(2))
+
+    file_info = db_get_file(target_uuid)
+    if file_info:
+        db_delete_file(target_uuid)
+        if db_get_path_reference_count(file_info["local_path"]) == 0:
+            cleanup_file(file_info["local_path"])
+        await callback_query.answer("🗑️ Link deleted successfully!", show_alert=True)
+    else:
+        await callback_query.answer("⚠️ File already deleted or not found.", show_alert=True)
+
+    await refresh_admin_links_view(client, callback_query.message.chat.id, callback_query.message.id, target_user_id)
 
 
 @bot.on_callback_query(filters.regex(r"^admin_delall_(.+)$"))
