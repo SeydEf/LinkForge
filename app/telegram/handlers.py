@@ -638,12 +638,16 @@ async def set_password_handler(client, message: Message):
     orig_msg_id = data["message_id"]
 
     if message.text.strip().lower() == "/cancel":
-        return await message.reply_text("❌ Operation cancelled.")
+        await message.reply_text("❌ Operation cancelled.")
+        message.stop_propagation()
+        return
 
     password = message.text.strip()
     if len(password) < 4:
         PENDING_PASSWORD[user_id] = data
-        return await message.reply_text("⚠️ Threshold requirements dictate minimum length of 4 parameters. Try again.")
+        await message.reply_text("⚠️ Threshold requirements dictate minimum length of 4 parameters. Try again.")
+        message.stop_propagation()
+        return
 
     db_set_password(file_uuid, password)
     try:
@@ -670,6 +674,7 @@ async def set_password_handler(client, message: Message):
                 await client.edit_message_text(chat_id=orig_chat_id, message_id=orig_msg_id, text=success_text, reply_markup=keyboard, disable_web_page_preview=True)
             except Exception:
                 pass
+    message.stop_propagation()
 
 
 @bot.on_message(filters.private & filters.text & filters.regex(r"^https?://"))
