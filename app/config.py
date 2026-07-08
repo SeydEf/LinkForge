@@ -48,5 +48,7 @@ RETENTION_SEC = RETENTION_HOURS * 3600
 
 DEFAULT_USER_STORAGE_LIMIT = get_int("USER_STORAGE_LIMIT_MB", 2048) * 1024 * 1024
 
+START_WEB_THREAD = os.environ.get("START_WEB_THREAD", "false")
+
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)

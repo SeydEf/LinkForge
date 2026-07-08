@@ -7,7 +7,18 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data
+    command: python run.py
+
+  web-server:
+    build: .
+    container_name: link-forge-web-server
+    restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "127.0.0.1:20124:5000"
     volumes:
       - ./data:/app/data
+    command: gunicorn app.web.server:flask_app -b 0.0.0.0:5000 --workers 4

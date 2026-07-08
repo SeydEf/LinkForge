@@ -6,11 +6,12 @@ from flask import Flask, abort, render_template_string, request, send_file
 from werkzeug.security import check_password_hash
 
 from ..config import RETENTION_SEC
-from ..database import db_get_analytics, db_get_file, db_increment_downloads, db_log_download
+from ..database import db_get_analytics, db_get_file, db_increment_downloads, db_log_download, init_db
 from ..utils import extract_file_metadata
 from .templates import PASSWORD_FORM, STATS_TEMPLATE
 
 flask_app = Flask(__name__)
+init_db()
 
 
 @flask_app.route('/download/<file_uuid>', methods=['GET', 'POST'])

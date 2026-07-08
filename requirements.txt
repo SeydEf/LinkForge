@@ -5,3 +5,4 @@ aiohttp
 qrcode[pil]
 werkzeug
 Pillow
+gunicorn
