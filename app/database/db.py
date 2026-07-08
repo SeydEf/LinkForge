@@ -57,15 +57,46 @@ def init_db():
             conn.execute("ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass
+
+        for col in ["username", "first_name", "last_name"]:
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
+
         conn.commit()
 
 
-def db_add_user(user_id: int):
+def db_add_user(user_id: int, username: str = None, first_name: str = None, last_name: str = None):
     with db_lock:
         conn = get_conn()
         conn.execute(
             "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        conn.execute(
+            "UPDATE users SET username = ?, first_name = ?, last_name = ? WHERE user_id = ?",
+            (username, first_name, last_name, user_id)
+        )
         conn.commit()
+
+
+def db_get_user(user_id: int) -> dict:
+    with db_lock:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def db_search_users(query: str) -> list[dict]:
+    with db_lock:
+        conn = get_conn()
+        like_query = f"%{query}%"
+        rows = conn.execute(
+            "SELECT * FROM users WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ?",
+            (like_query, like_query, like_query)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def db_is_banned(user_id: int) -> bool:

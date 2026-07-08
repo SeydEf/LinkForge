@@ -33,7 +33,12 @@ def admin_only(func):
 @bot.on_message(group=-2)
 async def check_ban_and_register(client, message: Message):
     if message.from_user:
-        db_add_user(message.from_user.id)
+        db_add_user(
+            message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
         if db_is_banned(message.from_user.id):
             await message.reply_text("🚫 Your access to this bot has been restricted by an administrator.")
             message.stop_propagation()

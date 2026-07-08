@@ -21,6 +21,8 @@ from .db import (
     db_get_user_quota,
     db_get_user_active_storage,
     db_user_exists,
+    db_get_user,
+    db_search_users,
 )
 
 __all__ = [
@@ -46,6 +48,8 @@ __all__ = [
     "db_get_user_quota",
     "db_get_user_active_storage",
     "db_user_exists",
+    "db_get_user",
+    "db_search_users",
 ]
 
 

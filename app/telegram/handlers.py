@@ -6,6 +6,7 @@ import uuid
 from urllib.parse import urlparse
 
 from pyrogram import filters
+from pyrogram.errors import MessageNotModified
 from pyrogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -14,7 +15,7 @@ from pyrogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from ..config import BASE_URL, DOWNLOAD_DIR, RETENTION_HOURS, RETENTION_SEC
+from ..config import ADMIN_IDS, BASE_URL, DOWNLOAD_DIR, RETENTION_HOURS, RETENTION_SEC
 from ..database import (
     db_add_file,
     db_delete_file,
@@ -31,6 +32,8 @@ from ..database import (
     db_get_user_quota,
     db_get_user_active_storage,
     db_user_exists,
+    db_get_user,
+    db_search_users,
 )
 from ..state import ACTIVE_DOWNLOADS, PENDING_PASSWORD, PENDING_URL_CHOICE, USER_BATCHES
 from ..utils import cleanup_file, human_size
@@ -69,6 +72,251 @@ async def admin_stats_cmd(client, message: Message):
         f"💾 **Disk Space Consumed:** `{human_size(total_bytes)}`\n"
         f"📥 **Accumulated Downloads Served:** `{total_downloads}`"
     )
+
+
+async def send_admin_user_panel(client, chat_id: int, user_id: int, edit_message_id: int = None):
+    u = db_get_user(user_id)
+    if not u:
+        err_text = f"❌ User `{user_id}` does not exist in the database."
+        if edit_message_id:
+            try:
+                await client.edit_message_text(chat_id, edit_message_id, err_text)
+            except Exception:
+                pass
+        else:
+            await client.send_message(chat_id, err_text)
+        return
+
+    stats = db_get_user_stats(user_id, RETENTION_SEC)
+    unique_paths = set(stats["active_paths"])
+    active_storage_bytes = 0
+    for path in unique_paths:
+        if os.path.exists(path):
+            active_storage_bytes += os.path.getsize(path)
+
+    quota_bytes = db_get_user_quota(user_id)
+    quota_str = human_size(quota_bytes) if quota_bytes > 0 else "Unlimited"
+
+    is_banned = bool(u.get("is_banned"))
+    ban_status_str = "🚫 Banned" if is_banned else "✅ Active"
+
+    name_parts = []
+    if u.get("first_name"):
+        name_parts.append(u["first_name"])
+    if u.get("last_name"):
+        name_parts.append(u["last_name"])
+    full_name = " ".join(name_parts) or "Unknown Name"
+    username = f"@{u['username']}" if u.get("username") else "No username"
+
+    panel_text = (
+        f"👤 **User Profile & Management**\n\n"
+        f"🆔 **User ID:** `{user_id}`\n"
+        f"📛 **Name:** {full_name}\n"
+        f"💬 **Username:** {username}\n"
+        f"🚦 **Status:** {ban_status_str}\n\n"
+        f"📊 **Activity Summary:**\n"
+        f"🔗 **Active Links:** `{stats['active_links']}`\n"
+        f"📂 **Total Links:** `{stats['total_links']}`\n"
+        f"💾 **Active Storage:** `{human_size(active_storage_bytes)}` / `{quota_str}`\n"
+        f"📥 **Downloads Served:** `{stats['total_downloads']}`\n"
+        f"👥 **Unique Downloaders:** `{stats['unique_users']}`"
+    )
+
+    ban_btn_text = "✅ Unban User" if is_banned else "🚫 Ban User"
+    ban_callback = f"admin_unb_{user_id}" if is_banned else f"admin_ban_{user_id}"
+
+    kbd = InlineKeyboardMarkup([
+        [InlineKeyboardButton(ban_btn_text, callback_data=ban_callback)],
+        [
+            InlineKeyboardButton("➖ 1 GB", callback_data=f"admin_qdec_{user_id}"),
+            InlineKeyboardButton("➕ 1 GB", callback_data=f"admin_qinc_{user_id}"),
+            InlineKeyboardButton("♾️ Unlimited", callback_data=f"admin_qunl_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📂 View Active Links", callback_data=f"admin_vlinks_{user_id}"),
+            InlineKeyboardButton("🗑️ Delete All Links", callback_data=f"admin_delall_{user_id}")
+        ]
+    ])
+
+    if edit_message_id:
+        try:
+            await client.edit_message_text(chat_id, edit_message_id, panel_text, reply_markup=kbd)
+        except MessageNotModified:
+            pass
+        except Exception:
+            try:
+                await client.send_message(chat_id, panel_text, reply_markup=kbd)
+            except Exception:
+                pass
+    else:
+        await client.send_message(chat_id, panel_text, reply_markup=kbd)
+
+
+@bot.on_message(filters.command("admin_search") & filters.private)
+@admin_only
+async def admin_search_cmd(client, message: Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        return await message.reply_text("❗ Use format: `/admin_search <username or name>`")
+
+    query = parts[1].strip()
+    results = db_search_users(query)
+
+    if not results:
+        return await message.reply_text("❌ No users matching that query were found.")
+
+    buttons = []
+    for u in results[:20]:
+        name_parts = []
+        if u.get("first_name"):
+            name_parts.append(u["first_name"])
+        if u.get("last_name"):
+            name_parts.append(u["last_name"])
+        name = " ".join(name_parts) or "Unknown Name"
+        username_str = f" (@{u['username']})" if u.get("username") else ""
+        button_text = f"{name}{username_str} [{u['user_id']}]"
+        buttons.append([InlineKeyboardButton(button_text, callback_data=f"admin_view_{u['user_id']}")])
+
+    reply_markup = InlineKeyboardMarkup(buttons)
+    await message.reply_text(
+        f"🔍 **Search Results for:** `{query}`\nSelect a user below to manage settings:",
+        reply_markup=reply_markup
+    )
+
+
+@bot.on_message(filters.private & filters.regex(r"^\d+$"))
+@admin_only
+async def admin_user_id_msg(client, message: Message):
+    user_id = int(message.text.strip())
+    await send_admin_user_panel(client, message.chat.id, user_id)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_view_(.+)$"))
+async def admin_view_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+    target_id = int(callback_query.matches[0].group(1))
+    await callback_query.answer()
+    await send_admin_user_panel(client, callback_query.message.chat.id, target_id, edit_message_id=callback_query.message.id)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_(ban|unb)_(.+)$"))
+async def admin_ban_unban_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    action = callback_query.matches[0].group(1)
+    target_id = int(callback_query.matches[0].group(2))
+
+    ban = (action == "ban")
+    db_set_ban_status(target_id, ban=ban)
+
+    action_str = "restricted" if ban else "unrestricted"
+    await callback_query.answer(f"User {target_id} has been {action_str}.", show_alert=True)
+    await send_admin_user_panel(client, callback_query.message.chat.id, target_id, edit_message_id=callback_query.message.id)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_q(inc|dec|unl)_(.+)$"))
+async def admin_quota_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    action = callback_query.matches[0].group(1)
+    target_id = int(callback_query.matches[0].group(2))
+
+    current_quota = db_get_user_quota(target_id)
+    one_gb = 1024 * 1024 * 1024
+
+    if action == "unl":
+        db_set_user_quota(target_id, -1)
+        await callback_query.answer("Quota set to Unlimited.", show_alert=True)
+    elif action == "inc":
+        if current_quota == -1:
+            await callback_query.answer("User already has unlimited quota.", show_alert=True)
+            return
+        new_quota = current_quota + one_gb
+        db_set_user_quota(target_id, new_quota)
+        await callback_query.answer("Quota increased by 1 GB.", show_alert=True)
+    elif action == "dec":
+        if current_quota == -1:
+            await callback_query.answer("Cannot decrease from unlimited. Set a custom quota first.", show_alert=True)
+            return
+        new_quota = max(one_gb, current_quota - one_gb)
+        db_set_user_quota(target_id, new_quota)
+        await callback_query.answer("Quota decreased by 1 GB.", show_alert=True)
+
+    await send_admin_user_panel(client, callback_query.message.chat.id, target_id, edit_message_id=callback_query.message.id)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_vlinks_(.+)$"))
+async def admin_view_links_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    target_id = int(callback_query.matches[0].group(1))
+    files = db_get_files_by_owner(target_id)
+    now = time.time()
+    active_files = [f for f in files if now - f["upload_time"] <= RETENTION_SEC]
+
+    if not active_files:
+        await callback_query.answer("No active links found for this user.", show_alert=True)
+        return
+
+    await callback_query.answer()
+
+    response_text = f"📂 **Active Links for User `{target_id}`**:\n\n"
+    for f in active_files:
+        remaining = RETENTION_SEC - (now - f["upload_time"])
+        hrs, mins = int(remaining // 3600), int((remaining % 3600) // 60)
+        lock_icon = "🔒" if f["password_hash"] else "🔓"
+        response_text += (
+            f"📄 `{f['original_name']}`\n"
+            f"   Code: `/admin_delete {f['uuid']}`\n"
+            f"   Downloads: {f['downloads']} | {lock_icon} | Expires in {hrs}h {mins}m\n"
+            f"   🔗 {BASE_URL}/download/{f['uuid']}\n\n"
+        )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"admin_view_{target_id}")]
+    ])
+    await client.send_message(chat_id=callback_query.message.chat.id, text=response_text[:4096], reply_markup=keyboard, disable_web_page_preview=True)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_delall_(.+)$"))
+async def admin_delall_confirm_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    target_id = int(callback_query.matches[0].group(1))
+    await callback_query.answer()
+
+    text = f"⚠️ **Confirm Deletion**\n\nAre you sure you want to delete ALL active links for user `{target_id}`? This action is permanent."
+    kbd = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🚨 Yes, Delete All", callback_data=f"admin_delallconf_{target_id}"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"admin_view_{target_id}")
+        ]
+    ])
+    await client.edit_message_text(chat_id=callback_query.message.chat.id, message_id=callback_query.message.id, text=text, reply_markup=kbd)
+
+
+@bot.on_callback_query(filters.regex(r"^admin_delallconf_(.+)$"))
+async def admin_delall_execute_callback(client, callback_query):
+    if callback_query.from_user.id not in ADMIN_IDS:
+        return await callback_query.answer("⚠️ Access Denied", show_alert=True)
+
+    target_id = int(callback_query.matches[0].group(1))
+    files = db_get_files_by_owner(target_id)
+
+    deleted_count = 0
+    for f in files:
+        db_delete_file(f["uuid"])
+        if db_get_path_reference_count(f["local_path"]) == 0:
+            cleanup_file(f["local_path"])
+        deleted_count += 1
+
+    await callback_query.answer(f"Successfully deleted {deleted_count} links.", show_alert=True)
+    await send_admin_user_panel(client, callback_query.message.chat.id, target_id, edit_message_id=callback_query.message.id)
 
 
 @bot.on_message(filters.command("admin_ban") & filters.private)
