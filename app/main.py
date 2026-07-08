@@ -1,12 +1,10 @@
-import os
 import threading
 import time
 
-from .config import RETENTION_SEC, START_WEB_THREAD
+from .config import RETENTION_SEC
 from .database import db_delete_file, db_get_all_files, db_get_path_reference_count, init_db
 from .telegram import bot
 from .utils import cleanup_file
-from .web import run_flask
 
 
 def cleanup_expired_files():
@@ -38,13 +36,6 @@ def main():
     cleanup_thread = threading.Thread(
         target=cleanup_expired_files, daemon=True)
     cleanup_thread.start()
-
-    if START_WEB_THREAD:
-        print("Exposing web download port bindings...")
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-    else:
-        print("Skipping background web server thread (running via WSGI).")
 
     print("Establishing interface polling execution frameworks...")
     bot.run()
