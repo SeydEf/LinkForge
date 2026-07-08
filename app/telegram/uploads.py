@@ -27,15 +27,19 @@ def build_result_keyboard(file_uuid: str, is_protected: bool) -> InlineKeyboardM
         return InlineKeyboardMarkup([
             [InlineKeyboardButton(
                 "🔓 Remove Password Protection", callback_data=f"rmpwd_{file_uuid}")],
-            [InlineKeyboardButton("📊 View Stats Data",
-                                  url=f"{BASE_URL}/stats/{file_uuid}")]
+            [
+                InlineKeyboardButton("📊 View Stats Data", url=f"{BASE_URL}/stats/{file_uuid}"),
+                InlineKeyboardButton("🗑️ Delete File", callback_data=f"delete_{file_uuid}")
+            ]
         ])
     else:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("🔒 Set Security Password",
                                   callback_data=f"setpwd_{file_uuid}")],
-            [InlineKeyboardButton("📊 View Stats Data",
-                                  url=f"{BASE_URL}/stats/{file_uuid}")]
+            [
+                InlineKeyboardButton("📊 View Stats Data", url=f"{BASE_URL}/stats/{file_uuid}"),
+                InlineKeyboardButton("🗑️ Delete File", callback_data=f"delete_{file_uuid}")
+            ]
         ])
 
 

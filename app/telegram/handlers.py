@@ -311,6 +311,31 @@ async def remove_password_callback(client, callback_query):
             pass
 
 
+@bot.on_callback_query(filters.regex(r"^delete_(.+)$"))
+async def handle_user_delete_callback(client, callback_query):
+    file_uuid = callback_query.matches[0].group(1)
+    file_info = db_get_file(file_uuid)
+    if not file_info:
+        return await callback_query.answer("⚠️ File already deleted or not found.", show_alert=True)
+
+    if file_info["owner_id"] != callback_query.from_user.id:
+        return await callback_query.answer("⚠️ Action unauthorized.", show_alert=True)
+
+    db_delete_file(file_uuid)
+    if db_get_path_reference_count(file_info["local_path"]) == 0:
+        cleanup_file(file_info["local_path"])
+
+    await callback_query.answer("🗑️ File deleted successfully!", show_alert=True)
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        try:
+            await callback_query.message.edit_text("🗑️ **This file link has been deleted and is no longer active.**")
+        except Exception:
+            pass
+
+
+
 @bot.on_message(filters.private & filters.text & filters.create(lambda _, __, m: m.from_user.id in PENDING_PASSWORD), group=-1)
 async def set_password_handler(client, message: Message):
     user_id = message.from_user.id
