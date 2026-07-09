@@ -7,7 +7,14 @@ from ..state import ACTIVE_DOWNLOADS
 from ..utils import human_size, make_progress_bar
 
 
-async def download_progress(current: int, total: int, task_id: str, status_msg: Message, file_name: str, start_time: float):
+async def download_progress(
+    current: int,
+    total: int,
+    task_id: str,
+    status_msg: Message,
+    file_name: str,
+    start_time: float,
+):
     active = ACTIVE_DOWNLOADS.get(task_id)
     if not active or active.get("cancelled"):
         raise Exception("Cancelled by user")
@@ -20,18 +27,30 @@ async def download_progress(current: int, total: int, task_id: str, status_msg: 
     elapsed = now - start_time
     speed = current / elapsed if elapsed > 0 else 0
     bar = make_progress_bar(current, total)
-    size_info = f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    size_info = (
+        f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    )
 
     text = f"⬇️ **Downloading...**\n\n📄 **File:** `{file_name}`\n`{bar}`\n📦 **Size:** {size_info}\n🚀 **Speed:** {human_size(speed)}/s"
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🛑 Cancel", callback_data=f"cancel_{task_id}")]])
+        [[InlineKeyboardButton("🛑 Cancel", callback_data=f"cancel_{task_id}")]]
+    )
     try:
         await status_msg.edit_text(text, reply_markup=keyboard)
     except MessageNotModified:
         pass
 
 
-async def batch_download_progress(current: int, total: int, task_id: str, status_msg: Message, file_name: str, start_time: float, idx: int, total_items: int):
+async def batch_download_progress(
+    current: int,
+    total: int,
+    task_id: str,
+    status_msg: Message,
+    file_name: str,
+    start_time: float,
+    idx: int,
+    total_items: int,
+):
     active = ACTIVE_DOWNLOADS.get(task_id)
     if not active or active.get("cancelled"):
         raise Exception("Cancelled by user")
@@ -44,7 +63,9 @@ async def batch_download_progress(current: int, total: int, task_id: str, status
     elapsed = now - start_time
     speed = current / elapsed if elapsed > 0 else 0
     bar = make_progress_bar(current, total)
-    size_info = f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    size_info = (
+        f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    )
 
     text = (
         f"📥 **Downloading item {idx} of {total_items}...**\n\n"
@@ -54,14 +75,22 @@ async def batch_download_progress(current: int, total: int, task_id: str, status
         f"🚀 **Speed:** {human_size(speed)}/s"
     )
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🛑 Cancel Batch", callback_data=f"cancel_{task_id}")]])
+        [[InlineKeyboardButton("🛑 Cancel Batch", callback_data=f"cancel_{task_id}")]]
+    )
     try:
         await status_msg.edit_text(text, reply_markup=keyboard)
     except MessageNotModified:
         pass
 
 
-async def upload_progress(current: int, total: int, task_id: str, status_msg: Message, file_name: str, start_time: float):
+async def upload_progress(
+    current: int,
+    total: int,
+    task_id: str,
+    status_msg: Message,
+    file_name: str,
+    start_time: float,
+):
     active = ACTIVE_DOWNLOADS.get(task_id)
     if active and active.get("cancelled"):
         raise Exception("Cancelled by user")
@@ -75,7 +104,9 @@ async def upload_progress(current: int, total: int, task_id: str, status_msg: Me
     elapsed = now - start_time
     speed = current / elapsed if elapsed > 0 else 0
     bar = make_progress_bar(current, total)
-    size_info = f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    size_info = (
+        f"{human_size(current)} / {human_size(total)}" if total else human_size(current)
+    )
 
     text = f"📤 **Uploading to Telegram...**\n\n📄 **File:** `{file_name}`\n`{bar}`\n📦 **Size:** {size_info}\n🚀 **Speed:** {human_size(speed)}/s"
     try:

@@ -51,5 +51,3 @@ __all__ = [
     "db_get_user",
     "db_search_users",
 ]
-
-

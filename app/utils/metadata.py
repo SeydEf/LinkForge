@@ -25,7 +25,7 @@ def extract_file_metadata(local_path: str, incoming_duration=None) -> dict:
         "md5": "",
         "sha256": "",
         "dimensions": None,
-        "duration": incoming_duration
+        "duration": incoming_duration,
     }
     if not os.path.exists(local_path):
         return meta

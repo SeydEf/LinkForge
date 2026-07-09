@@ -2,7 +2,16 @@ import os
 
 
 def get_media(message):
-    for attr in ("document", "video", "audio", "voice", "photo", "animation", "video_note", "sticker"):
+    for attr in (
+        "document",
+        "video",
+        "audio",
+        "voice",
+        "photo",
+        "animation",
+        "video_note",
+        "sticker",
+    ):
         media = getattr(message, attr, None)
         if media:
             return attr, media
